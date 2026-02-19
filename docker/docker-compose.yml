@@ -1,0 +1,32 @@
+services:
+  starvla:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: starvla:cu124-ubuntu2404
+    container_name: starvla-cu124
+    # ROS2 DDS는 host 네트워크가 제일 덜 말썽남
+    network_mode: host
+    ipc: host
+
+    # GPU (compose plugin 버전에 따라 둘 중 하나가 동작)
+    # 1) 최신 compose: gpus: all
+    gpus: all
+
+    # 2) 구버전/호환: environment로도 보강
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+      - ROS_DOMAIN_ID=0
+      - RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+      - HF_HOME=/root/.cache/huggingface
+
+    volumes:
+      # starVLA 소스 (개발 편의)
+      - ./:/workspace/starVLA:rw
+      # HF 캐시 공유(다운로드 재사용)
+      - ${HOME}/.cache/huggingface:/root/.cache/huggingface:rw
+
+    # 기본은 쉘, 필요시 아래처럼 바로 실행 커맨드로 바꿔도 됨
+    command: ["bash"]
+
