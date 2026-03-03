@@ -377,7 +377,8 @@ if __name__ == "__main__":
     parser.add_argument(
         "--config_yaml",
         type=str,
-        default="starVLA/config/training/starvla_cotrain_oxe.yaml",
+        # default="starVLA/config/training/starvla_cotrain_oxe.yaml",
+        default="starVLA/config/deepseeds/deepspeed_zero2.yaml",
         help="Path to YAML config",
     )
     args, clipargs = parser.parse_known_args()

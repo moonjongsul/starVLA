@@ -1,7 +1,11 @@
-
-
-export NCCL_SOCKET_IFNAME=bond0
-export NCCL_IB_HCA=mlx5_2,mlx5_3
+# NCCL: single-node 또는 bond0/IB 없는 환경에서는 아래 기본값 사용
+# (bond0 / mlx5 는 멀티노드·InfiniBand 클러스터용 - 해당 환경이면 주석 해제 후 사용)
+if [ -z "${NCCL_SOCKET_IFNAME}" ]; then
+  export NCCL_SOCKET_IFNAME=lo
+fi
+# export NCCL_SOCKET_IFNAME=bond0
+# export NCCL_IB_HCA=mlx5_2,mlx5_3
+export NCCL_IB_DISABLE=1
 
 # used for check save when communication
 export NCCL_BLOCKING_WAIT=1
@@ -12,7 +16,7 @@ export NCCL_TIMEOUT=1000  # timeout set to 1 hour (unit: seconds)
 # === Please modify the following paths according to your environment ===
 Framework_name=QwenFast
 freeze_module_list=''
-base_vlm=playground/Pretrained_models/Qwen3-VL-4B-Instruct-Action
+base_vlm=/media/js/seagate_hub/SynologyDrive/PretrainedModel/Qwen3-VL-4B-Instruct-Action
 config_yaml=./examples/Robotwin/train_files/starvla_cotrain_robotwin.yaml
 run_root_dir=./results/Checkpoints
 data_mix=robotwin
@@ -31,12 +35,12 @@ cp $0 ${output_dir}/
 
 accelerate launch \
   --config_file starVLA/config/deepseeds/deepspeed_zero2.yaml \
-  --num_processes 8 \
+  --num_processes 1 \
   starVLA/training/train_starvla.py \
   --config_yaml ${config_yaml} \
   --framework.name ${Framework_name} \
   --framework.qwenvl.base_vlm ${base_vlm} \
-  --datasets.vla_data.per_device_batch_size 8 \
+  --datasets.vla_data.per_device_batch_size 2 \
   --datasets.vla_data.data_mix ${data_mix} \
   --trainer.freeze_modules ${freeze_module_list} \
   --trainer.max_train_steps 100000 \

@@ -4,7 +4,7 @@ ARG CUDA_VER=12.4.1
 ARG UBUNTU_VER=ubuntu24.04
 
 # ---- build stage (needs nvcc for flash-attn) ----
-FROM nvidia/cuda:${CUDA_VER}-cudnn-devel-${UBUNTU_VER} AS build
+FROM nvcr.io/nvidia/cuda:${CUDA_VER}-cudnn-devel-${UBUNTU_VER} AS build
 
 ENV DEBIAN_FRONTEND=noninteractive
 ENV TZ=Asia/Seoul
@@ -46,7 +46,7 @@ RUN pip install --no-cache-dir \
     flash-attn==${FLASH_ATTN_VER} --no-build-isolation
 
 # ---- runtime stage (lighter) ----
-FROM nvidia/cuda:${CUDA_VER}-cudnn-runtime-${UBUNTU_VER} AS runtime
+FROM nvcr.io/nvidia/cuda:${CUDA_VER}-cudnn-runtime-${UBUNTU_VER} AS runtime
 
 ENV DEBIAN_FRONTEND=noninteractive
 ENV TZ=Asia/Seoul
