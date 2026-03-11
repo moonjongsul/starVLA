@@ -96,7 +96,11 @@ class baseframework(PreTrainedModel):
 
             model_state_dict = load_file(str(pretrained_checkpoint))
         else:
-            model_state_dict = torch.load(pretrained_checkpoint, map_location="cpu")
+            try:
+                model_state_dict = load_file(pretrained_checkpoint, device="cpu")
+            except Exception:
+                model_state_dict = torch.load(pretrained_checkpoint, map_location="cpu", weights_only=False)
+            # model_state_dict = torch.load(pretrained_checkpoint, map_location="cpu", weights_only=False)
         model_keys = set(FrameworkModel.state_dict().keys())
         checkpoint_keys = set(model_state_dict.keys())
         try:

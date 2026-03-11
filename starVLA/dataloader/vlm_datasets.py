@@ -18,7 +18,7 @@ import numpy as np
 import torch
 from torch.utils.data import Dataset
 from PIL import Image
-from decord import VideoReader
+import av
 import transformers
 from omegaconf import OmegaConf
 from starVLA.dataloader.qwenvl_llavajson.qwen_data_config import data_list
@@ -41,6 +41,51 @@ def rank0_print(*args):
 def read_jsonl(path):
     with open(path, "r") as f:
         return [json.loads(line) for line in f]
+
+
+def _read_video_frames_pyav(video_file: str, frame_idx: np.ndarray) -> np.ndarray:
+    """Read selected frame indices from a video using PyAV."""
+    frame_idx_set = set(frame_idx.tolist())
+    selected_frames = {}
+    with av.open(video_file) as container:
+        video_stream = container.streams.video[0]
+        for i, frame in enumerate(container.decode(video=0)):
+            if i in frame_idx_set:
+                selected_frames[i] = frame.to_ndarray(format="rgb24")
+            if len(selected_frames) == len(frame_idx_set):
+                break
+
+    missing_idx = [idx for idx in frame_idx if idx not in selected_frames]
+    if missing_idx:
+        raise RuntimeError(f"Failed to decode frames {missing_idx} from {video_file}")
+
+    return np.stack([selected_frames[idx] for idx in frame_idx], axis=0)
+
+
+def _probe_video_info_pyav(video_file: str) -> Tuple[int, float]:
+    """Return (total_frames, avg_fps) for a video using PyAV."""
+    with av.open(video_file) as container:
+        stream = container.streams.video[0]
+        avg_fps = float(stream.average_rate) if stream.average_rate else None
+        total_frames = int(stream.frames) if stream.frames else None
+
+        if avg_fps is None or avg_fps <= 0:
+            if stream.base_rate:
+                avg_fps = float(stream.base_rate)
+            elif stream.guessed_rate:
+                avg_fps = float(stream.guessed_rate)
+            else:
+                avg_fps = 1.0
+
+        if total_frames is None or total_frames <= 0:
+            decoded_count = 0
+            for _ in container.decode(video=0):
+                decoded_count += 1
+            total_frames = decoded_count
+
+    if total_frames <= 0:
+        raise RuntimeError(f"No video frames found in {video_file}")
+    return total_frames, avg_fps
 
 
 def preprocess_qwen_2_visual(
@@ -235,9 +280,7 @@ class LazySupervisedDataset(Dataset):
     def process_video(self, video_file):
         if not os.path.exists(video_file):
             print(f"File not exist: {video_file}")
-        vr = VideoReader(video_file, num_threads=4)
-        total_frames = len(vr)
-        avg_fps = vr.get_avg_fps()
+        total_frames, avg_fps = _probe_video_info_pyav(video_file)
         video_length = total_frames / avg_fps
         interval = getattr(self.data_args, "base_interval", 4)
 
@@ -248,7 +291,7 @@ class LazySupervisedDataset(Dataset):
         target_frames = min(max(num_frames_to_sample, video_min_frames), video_max_frames)
         frame_idx = np.linspace(0, total_frames - 1, target_frames, dtype=int)
         frame_idx = np.unique(frame_idx)
-        video = vr.get_batch(frame_idx).asnumpy()
+        video = _read_video_frames_pyav(video_file, frame_idx)
         fps = len(frame_idx) / video_length
         processor = copy.deepcopy(self.data_args.image_processor)
         processor.max_pixels = self.data_args.video_max_frame_pixels

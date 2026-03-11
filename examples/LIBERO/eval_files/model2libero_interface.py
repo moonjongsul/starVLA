@@ -113,11 +113,7 @@ class ModelClient:
         action_chunk_size = self.action_chunk_size
         if step % action_chunk_size == 0:
             response = self.client.predict_action(vla_input)
-            try:
-                normalized_actions = response["data"]["normalized_actions"] # B, chunk, D        
-            except KeyError:
-                print(f"Response data: {response}")
-                raise KeyError(f"Key 'normalized_actions' not found in response data: {response['data'].keys()}")
+            normalized_actions = self._extract_normalized_actions(response)  # B, chunk, D
             
             normalized_actions = normalized_actions[0]    
             self.raw_actions = self.unnormalize_actions(normalized_actions=normalized_actions, action_norm_stats=self.action_norm_stats)
@@ -131,6 +127,33 @@ class ModelClient:
         }
 
         return {"raw_action": raw_action}
+
+    @staticmethod
+    def _extract_normalized_actions(response: dict):
+        """Support both wrapped and legacy websocket response schemas."""
+        if not isinstance(response, dict):
+            raise TypeError(f"Unexpected response type: {type(response)}")
+
+        # New server schema: {"status": "ok|error", "data": {...}}
+        if response.get("status") == "error" or response.get("ok") is False:
+            err = response.get("error", {})
+            message = err.get("message", "Unknown server error")
+            raise RuntimeError(f"Policy server returned error: {message} | full_response={response}")
+
+        data = response.get("data", None)
+        if isinstance(data, dict) and "normalized_actions" in data:
+            return data["normalized_actions"]
+
+        # Legacy schema fallback: {"normalized_actions": ...}
+        if "normalized_actions" in response:
+            return response["normalized_actions"]
+
+        raise KeyError(
+            "Key 'normalized_actions' not found in websocket response. "
+            f"top_level_keys={list(response.keys())}, "
+            f"data_keys={list(data.keys()) if isinstance(data, dict) else None}, "
+            f"full_response={response}"
+        )
 
     @staticmethod
     def unnormalize_actions(normalized_actions: np.ndarray, action_norm_stats: Dict[str, np.ndarray]) -> np.ndarray:

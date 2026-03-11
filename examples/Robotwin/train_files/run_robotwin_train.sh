@@ -16,7 +16,7 @@ export NCCL_TIMEOUT=1000  # timeout set to 1 hour (unit: seconds)
 # === Please modify the following paths according to your environment ===
 Framework_name=QwenFast
 freeze_module_list=''
-base_vlm=/media/js/seagate_hub/SynologyDrive/PretrainedModel/Qwen3-VL-4B-Instruct-Action
+base_vlm=/mnt/synology/PretrainedModel/Qwen3-VL-4B-Instruct-Action
 config_yaml=./examples/Robotwin/train_files/starvla_cotrain_robotwin.yaml
 run_root_dir=./results/Checkpoints
 data_mix=robotwin

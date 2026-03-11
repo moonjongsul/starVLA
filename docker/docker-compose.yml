@@ -1,32 +1,35 @@
 services:
-  starvla:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    image: starvla:cu124-ubuntu2404
-    container_name: starvla-cu124
-    # ROS2 DDS는 host 네트워크가 제일 덜 말썽남
-    network_mode: host
+  myVLA:
+    container_name: myVLA
+    #image: nvcr.io/nvidia/pytorch:25.01-py3
+    image: moonjongsul/myvla:nvcr.io.pytorch-25.01-py3
+    tty: true
     ipc: host
-
-    # GPU (compose plugin 버전에 따라 둘 중 하나가 동작)
-    # 1) 최신 compose: gpus: all
-    gpus: all
-
-    # 2) 구버전/호환: environment로도 보강
+    cap_add:
+      - SYS_NICE
+    ulimits:
+      rtprio: 99
+      rttime: -1
+      memlock: -1
+    network_mode: host
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
     environment:
       - NVIDIA_VISIBLE_DEVICES=all
       - NVIDIA_DRIVER_CAPABILITIES=compute,utility
-      - ROS_DOMAIN_ID=0
-      - RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+      - DISPLAY=${DISPLAY}
+      - QT_X11_NO_MITSHM=1
       - HF_HOME=/root/.cache/huggingface
-
     volumes:
-      # starVLA 소스 (개발 편의)
-      - ./:/workspace/starVLA:rw
-      # HF 캐시 공유(다운로드 재사용)
+      - /mnt/synology/RobotData:/mnt/synology
+      - ../:/workspace/starVLA:rw
+      - /tmp/.X11-unix:/tmp/.X11-unix:rw
+      - /tmp/.docker.xauth:/tmp/.docker.xauth:rw
       - ${HOME}/.cache/huggingface:/root/.cache/huggingface:rw
-
-    # 기본은 쉘, 필요시 아래처럼 바로 실행 커맨드로 바꿔도 됨
-    command: ["bash"]
-
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/localtime:/etc/localtime:ro
