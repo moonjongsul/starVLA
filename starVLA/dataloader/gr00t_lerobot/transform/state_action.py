@@ -18,12 +18,144 @@ import random
 from typing import Any, ClassVar
 
 import numpy as np
-import pytorch3d.transforms as pt
 import torch
+import torch.nn.functional as F
 from pydantic import Field, PrivateAttr, field_validator, model_validator
 
 from ..schema import DatasetMetadata, RotationType, StateActionMetadata
 from .base import InvertibleModalityTransform, ModalityTransform
+
+
+class _RotationFunctions:
+    """Pure PyTorch implementation of rotation conversion functions.
+    Drop-in replacement for pytorch3d.transforms used by RotationTransform.
+    Quaternion convention: (w, x, y, z).
+    """
+
+    @staticmethod
+    def _sqrt_positive_part(x: torch.Tensor) -> torch.Tensor:
+        return torch.where(x > 0, torch.sqrt(x.clamp(min=0)), torch.zeros_like(x))
+
+    @staticmethod
+    def axis_angle_to_matrix(axis_angle: torch.Tensor) -> torch.Tensor:
+        angles = torch.norm(axis_angle, p=2, dim=-1, keepdim=True).clamp(min=1e-8)
+        axis = axis_angle / angles
+        angle = angles[..., 0]
+        cos, sin, omc = torch.cos(angle), torch.sin(angle), 1.0 - torch.cos(angle)
+        x, y, z = axis[..., 0], axis[..., 1], axis[..., 2]
+        R = torch.stack([
+            cos + x*x*omc,     x*y*omc - z*sin, x*z*omc + y*sin,
+            y*x*omc + z*sin, cos + y*y*omc,     y*z*omc - x*sin,
+            z*x*omc - y*sin, z*y*omc + x*sin, cos + z*z*omc,
+        ], dim=-1)
+        return R.reshape(*axis_angle.shape[:-1], 3, 3)
+
+    @classmethod
+    def matrix_to_axis_angle(cls, matrix: torch.Tensor) -> torch.Tensor:
+        return cls.quaternion_to_axis_angle(cls.matrix_to_quaternion(matrix))
+
+    @staticmethod
+    def quaternion_to_axis_angle(quaternions: torch.Tensor) -> torch.Tensor:
+        norms = torch.norm(quaternions[..., 1:], p=2, dim=-1, keepdim=True)
+        half_angles = torch.atan2(norms, quaternions[..., :1])
+        angles = 2.0 * half_angles
+        sin_half_over_angles = torch.where(
+            angles.abs() < 1e-6,
+            0.5 * torch.ones_like(angles),
+            torch.sin(half_angles) / angles,
+        )
+        return quaternions[..., 1:] / sin_half_over_angles
+
+    @staticmethod
+    def quaternion_to_matrix(quaternions: torch.Tensor) -> torch.Tensor:
+        r, i, j, k = torch.unbind(quaternions, dim=-1)
+        two_s = 2.0 / (quaternions * quaternions).sum(dim=-1)
+        o = torch.stack([
+            1 - two_s*(j*j + k*k), two_s*(i*j - k*r),     two_s*(i*k + j*r),
+            two_s*(i*j + k*r),     1 - two_s*(i*i + k*k), two_s*(j*k - i*r),
+            two_s*(i*k - j*r),     two_s*(j*k + i*r),     1 - two_s*(i*i + j*j),
+        ], dim=-1)
+        return o.reshape(*quaternions.shape[:-1], 3, 3)
+
+    @classmethod
+    def matrix_to_quaternion(cls, matrix: torch.Tensor) -> torch.Tensor:
+        batch_dim = matrix.shape[:-2]
+        m00, m01, m02, m10, m11, m12, m20, m21, m22 = [
+            matrix[..., i, j] for i in range(3) for j in range(3)
+        ]
+        q_abs = cls._sqrt_positive_part(torch.stack([
+            1.0 + m00 + m11 + m22,
+            1.0 + m00 - m11 - m22,
+            1.0 - m00 + m11 - m22,
+            1.0 - m00 - m11 + m22,
+        ], dim=-1))
+        x0, x1, x2, x3 = torch.unbind(q_abs, dim=-1)
+        q_candidates = torch.stack([
+            torch.stack([x0, x1*(m21-m12).sign(), x2*(m02-m20).sign(), x3*(m10-m01).sign()], dim=-1),
+            torch.stack([x0*(m21-m12).sign(), x1, x2*(m10+m01).sign(), x3*(m02+m20).sign()], dim=-1),
+            torch.stack([x0*(m02-m20).sign(), x1*(m10+m01).sign(), x2, x3*(m21+m12).sign()], dim=-1),
+            torch.stack([x0*(m10-m01).sign(), x1*(m02+m20).sign(), x2*(m21+m12).sign(), x3], dim=-1),
+        ], dim=-2)
+        best = q_abs.argmax(dim=-1)
+        out = q_candidates.gather(-2, best[..., None, None].expand(*batch_dim, 1, 4)).squeeze(-2)
+        return F.normalize(out, p=2, dim=-1)
+
+    @staticmethod
+    def euler_angles_to_matrix(euler_angles: torch.Tensor, convention: str) -> torch.Tensor:
+        def _rot(angle, axis):
+            cos, sin = torch.cos(angle), torch.sin(angle)
+            ones, zeros = torch.ones_like(cos), torch.zeros_like(cos)
+            if axis == "X":
+                m = torch.stack([ones,zeros,zeros, zeros,cos,-sin, zeros,sin,cos], dim=-1)
+            elif axis == "Y":
+                m = torch.stack([cos,zeros,sin, zeros,ones,zeros, -sin,zeros,cos], dim=-1)
+            else:  # Z
+                m = torch.stack([cos,-sin,zeros, sin,cos,zeros, zeros,zeros,ones], dim=-1)
+            return m.reshape(*angle.shape, 3, 3)
+
+        matrices = [_rot(euler_angles[..., i], ax) for i, ax in enumerate(convention)]
+        result = matrices[0]
+        for m in matrices[1:]:
+            result = torch.matmul(result, m)
+        return result
+
+    @staticmethod
+    def matrix_to_euler_angles(matrix: torch.Tensor, convention: str) -> torch.Tensor:
+        def _angle_from_tan(axis, other_axis, data, horizontal, tait_bryan):
+            i1, i2 = {"X": (2, 1), "Y": (0, 2), "Z": (1, 0)}[axis]
+            if horizontal:
+                i2, i1 = i1, i2
+            even = (axis + other_axis) in {"XY", "YZ", "ZX"}
+            if horizontal == even:
+                return torch.atan2(data[..., i1], data[..., i2])
+            return torch.atan2(-data[..., i1], data[..., i2])
+
+        i0 = "XYZ".index(convention[0])
+        i2 = "XYZ".index(convention[2])
+        tait_bryan = i0 != i2
+        if tait_bryan:
+            central = torch.asin(
+                (matrix[..., i0, i2] * (-1.0 if (i0 - i2) in (-1, 2) else 1.0)).clamp(-1.0, 1.0)
+            )
+        else:
+            central = torch.acos(matrix[..., i0, i0].clamp(-1.0, 1.0))
+        e0 = _angle_from_tan(convention[0], convention[1], matrix[..., i2], False, tait_bryan)
+        e2 = _angle_from_tan(convention[2], convention[1], matrix[..., i0, :], True, tait_bryan)
+        return torch.stack([e0, central, e2], dim=-1)
+
+    @staticmethod
+    def rotation_6d_to_matrix(d6: torch.Tensor) -> torch.Tensor:
+        a1, a2 = d6[..., :3], d6[..., 3:6]
+        b1 = F.normalize(a1, dim=-1)
+        b2 = a2 - (b1 * a2).sum(-1, keepdim=True) * b1
+        b2 = F.normalize(b2, dim=-1)
+        b3 = torch.linalg.cross(b1, b2, dim=-1)
+        return torch.stack([b1, b2, b3], dim=-2)
+
+    @staticmethod
+    def matrix_to_rotation_6d(matrix: torch.Tensor) -> torch.Tensor:
+        batch_dim = matrix.size()[:-2]
+        return matrix[..., :2, :].clone().reshape(batch_dim + (6,))
 
 
 class RotationTransform:
@@ -37,6 +169,8 @@ class RotationTransform:
 
         Always use matrix as intermediate representation.
         """
+        pt = _RotationFunctions
+
         if from_rep.startswith("euler_angles"):
             from_convention = from_rep.split("_")[-1]
             from_rep = "euler_angles"
