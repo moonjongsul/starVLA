@@ -3,8 +3,7 @@
 MASTER_ADDR=192.168.200.12
 MASTER_PORT=29500
 
-TRAIN_ARGS="
-cd /workspace/starVLA &&
+COMMON_ENV="
 export WANDB_MODE=disabled &&
 export PYTHONWARNINGS=ignore::UserWarning:torchvision &&
 export NCCL_SOCKET_IFNAME=enp1s0f1np1 &&
@@ -15,8 +14,10 @@ export TORCH_NCCL_BLOCKING_WAIT=1 &&
 export TORCH_NCCL_ASYNC_ERROR_HANDLING=1 &&
 export NCCL_TIMEOUT=3600 &&
 export TORCH_CUDA_ARCH_LIST=12.1+PTX &&
-export TORCHINDUCTOR_DISABLE=1 &&
-python -m torch.distributed.run \
+export TORCHINDUCTOR_DISABLE=1
+"
+
+TRAIN_CMD="python -m torch.distributed.run \
   --nproc_per_node=1 \
   --nnodes=2 \
   --master_addr=${MASTER_ADDR} \
@@ -35,17 +36,22 @@ python -m torch.distributed.run \
   --trainer.logging_frequency 100 \
   --trainer.eval_interval 100 \
   --run_root_dir ./results/Checkpoints \
-  --run_id 1229_libero4in1_qwen25oft
-"
+  --run_id 1229_libero4in1_qwen25oft"
 
-# 노드2 컨테이너에서 worker 실행 (백그라운드, 출력 표시)
+NODE1_CMD="cd /workspace/starVLA && ${COMMON_ENV} && ${TRAIN_CMD} --node_rank=0"
+NODE2_CMD="cd /workspace/starVLA && ${COMMON_ENV} && ${TRAIN_CMD} --node_rank=1"
+
+# 노드2 컨테이너에서 worker 실행 (백그라운드)
 echo "[INFO] Starting worker on node2 (starVLA-node2)..."
-ssh js_spark@192.168.200.13 "docker exec starVLA-node2 bash -c '${TRAIN_ARGS} --node_rank=1'" 2>&1 | sed 's/^/[node2] /' &
+ssh js_spark@192.168.200.13 "docker exec starVLA-node2 bash -c '${NODE2_CMD}'" 2>&1 | sed 's/^/[node2] /' &
 SSH_PID=$!
+
+# 잠시 대기 후 노드1 master 실행 (노드2가 먼저 대기 상태여야 함)
+sleep 3
 
 # 노드1 컨테이너에서 master 실행
 echo "[INFO] Starting master on node1 (starVLA-node1)..."
-docker exec starVLA-node1 bash -c "${TRAIN_ARGS} --node_rank=0" 2>&1 | sed 's/^/[node1] /'
+docker exec starVLA-node1 bash -c "${NODE1_CMD}" 2>&1 | sed 's/^/[node1] /'
 
 wait $SSH_PID
 echo "[INFO] Training finished."
