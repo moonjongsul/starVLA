@@ -25,3 +25,4 @@ diffusers
 timm
 tyro
 websockets
+mpi4py
