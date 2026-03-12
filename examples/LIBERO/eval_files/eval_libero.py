@@ -13,6 +13,17 @@ import imageio
 import numpy as np
 import tqdm
 import tyro
+
+_LIVE_FRAME_PATH = "/tmp/libero_live_frame.jpg"
+
+def _save_live_frame(img: np.ndarray) -> None:
+    """현재 프레임을 /tmp/libero_live_frame.jpg 로 저장 (live_viewer.py 연동)."""
+    try:
+        from PIL import Image
+        Image.fromarray(img).save(_LIVE_FRAME_PATH)
+    except Exception:
+        pass
+
 from libero.libero import benchmark, get_libero_path
 from libero.libero.envs import OffScreenRenderEnv
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
@@ -143,6 +154,9 @@ def eval_libero(args: Args) -> None:
 
                 # Save preprocessed image for replay video
                 replay_images.append(img)
+
+                # 실시간 라이브 뷰어용 프레임 저장 (live_viewer.py 참고)
+                _save_live_frame(img)
 
                 state = np.concatenate(
                     (
@@ -294,6 +308,6 @@ def start_debugpy_once():
     start_debugpy_once._started = True
 
 if __name__ == "__main__":
-    if os.getenv("DEBUG", False):
+    if os.getenv("DEBUG", "false").lower() == "true":
         start_debugpy_once()
     tyro.cli(eval_libero)

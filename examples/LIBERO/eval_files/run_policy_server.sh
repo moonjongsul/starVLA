@@ -8,6 +8,8 @@ port=5694
 ################# star Policy Server ######################
 
 # export DEBUG=true
+# DEBUG 변수를 명시적으로 해제 (eval_libero.sh 에서 상속된 경우 debugpy 오작동 방지)
+unset DEBUG
 CUDA_VISIBLE_DEVICES=$gpu_id ${star_vla_python} deployment/model_server/server_policy.py \
     --ckpt_path ${your_ckpt} \
     --port ${port} \

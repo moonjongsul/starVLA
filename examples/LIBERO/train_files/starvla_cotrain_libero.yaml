@@ -10,7 +10,7 @@ is_debug: false
 framework:
   name: QwenGR00T
   qwenvl:
-    base_vlm: ./playground/Pretrained_models/Qwen2.5-VL-3B-Instruct-Action
+    base_vlm: /mnt/synology/PretrainedModel/Qwen2.5-VL-3B-Instruct-Action
     attn_implementation: flash_attention_2
     vl_hidden_dim: 2048
   dino:
@@ -62,7 +62,7 @@ datasets:
 
   vla_data:
     dataset_py: lerobot_datasets
-    data_root_dir: playground/Datasets/LEROBOT_LIBERO_DATA
+    data_root_dir: /mnt/synology/RobotData/LEROBOT_LIBERO_DATA
     data_mix: libero_all # libero_goal
     action_type: delta_qpos
     CoT_prompt: "Your task is {instruction}. To identify the key objects for your task. Locate their bounding boxes in [x1,y1,x2,y2] format."
