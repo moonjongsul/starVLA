@@ -38,14 +38,14 @@ python -m torch.distributed.run \
   --run_id 1229_libero4in1_qwen25oft
 "
 
-# 노드2 컨테이너에서 worker 실행 (백그라운드)
+# 노드2 컨테이너에서 worker 실행 (백그라운드, 출력 표시)
 echo "[INFO] Starting worker on node2 (starVLA-node2)..."
-ssh js_spark@192.168.200.13 "docker exec starVLA-node2 bash -c '${TRAIN_ARGS} --node_rank=1'" &
+ssh js_spark@192.168.200.13 "docker exec starVLA-node2 bash -c '${TRAIN_ARGS} --node_rank=1'" 2>&1 | sed 's/^/[node2] /' &
 SSH_PID=$!
 
 # 노드1 컨테이너에서 master 실행
 echo "[INFO] Starting master on node1 (starVLA-node1)..."
-docker exec starVLA-node1 bash -c "${TRAIN_ARGS} --node_rank=0"
+docker exec starVLA-node1 bash -c "${TRAIN_ARGS} --node_rank=0" 2>&1 | sed 's/^/[node1] /'
 
 wait $SSH_PID
 echo "[INFO] Training finished."
