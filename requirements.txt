@@ -26,3 +26,4 @@ timm
 tyro
 websockets
 mpi4py
+torchcodec

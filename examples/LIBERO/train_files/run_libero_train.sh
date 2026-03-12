@@ -7,8 +7,10 @@ export NCCL_IB_DISABLE=1
 # used for check save when communication
 export TORCH_NCCL_BLOCKING_WAIT=1
 export TORCH_NCCL_ASYNC_ERROR_HANDLING=1
-export NCCL_TIMEOUT=10000  # timeout set to 1 hour (unit: seconds)
+export NCCL_TIMEOUT=3600  # timeout set to 1 hour (unit: seconds)
 export NCCL_SOCKET_TIMEOUT_MS=360000
+export TORCH_CUDA_ARCH_LIST="12.1+PTX"
+export TORCHINDUCTOR_DISABLE=1
 ###########################################################################################
 # === Please modify the following paths according to your environment ===
 Framework_name=QwenOFT
@@ -40,7 +42,7 @@ accelerate launch \
   --framework.qwenvl.base_vlm ${base_vlm} \
   --datasets.vla_data.data_root_dir ${libero_data_root}\
   --datasets.vla_data.data_mix ${data_mix} \
-  --datasets.vla_data.per_device_batch_size 16 \
+  --datasets.vla_data.per_device_batch_size 4 \
   --trainer.vla_data.video_backend torchvision_av \
   --trainer.freeze_modules ${freeze_module_list} \
   --trainer.max_train_steps 80000 \
@@ -51,24 +53,4 @@ accelerate launch \
   --run_id ${run_id} \
   --wandb_project starVLA_Libero \
   --wandb_entity jinhuiye \
-  # --is_debug True
-
-
-
-##### Multi-Server Multi-GPU training script #####
-  # accelerate launch \
-  #   --config_file starVLA/config/deepseeds/deepspeed_zero2.yaml \
-  #   --main_process_ip $MASTER_ADDR \
-  #   --main_process_port $MASTER_PORT \
-  #   --machine_rank $SLURM_PROCID \
-  #   --num_machines $SLURM_NNODES \
-  #   --num_processes=${TOTAL_GPUS} \
-  #   starVLA/training/train_starvla.py \
-  #   --config_yaml ${config_yaml} \
-  #   --framework.name ${Framework_name} \
-  #   --framework.qwenvl.base_vlm ${base_vlm} \
-  #   --run_root_dir ${run_root_dir} \
-  #   --run_id ${run_id} \
-  #   --wandb_project your_project \
-  #   --wandb_entity your_name
-##### Multi-Server Multi-GPU training script #####
+  --is_debug True

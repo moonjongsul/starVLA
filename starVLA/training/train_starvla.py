@@ -2,6 +2,9 @@
 # Licensed under the MIT License, Version 1.0 (the "License");
 # Implemented by [Jinhui YE / HKUST University] in [2025].
 
+import warnings
+warnings.filterwarnings('ignore')
+
 """Training entrypoint for StarVLA single-task VLA training."""
 
 # Standard Library
