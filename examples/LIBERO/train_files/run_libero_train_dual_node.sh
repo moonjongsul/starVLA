@@ -34,7 +34,7 @@ python -m torch.distributed.run \
   --framework.qwenvl.base_vlm /mnt/synology/PretrainedModel/Qwen2.5-VL-3B-Instruct-Action \
   --datasets.vla_data.data_root_dir /mnt/synology/RobotData/LEROBOT_LIBERO_DATA \
   --datasets.vla_data.data_mix libero_all \
-  --datasets.vla_data.per_device_batch_size 8 \
+  --datasets.vla_data.per_device_batch_size 12 \
   --trainer.vla_data.video_backend torchvision_av \
   --trainer.freeze_modules '' \
   --trainer.max_train_steps 80000 \
