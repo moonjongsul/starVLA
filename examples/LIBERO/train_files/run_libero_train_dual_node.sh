@@ -34,15 +34,18 @@ python -m torch.distributed.run \
   --framework.qwenvl.base_vlm /mnt/synology/PretrainedModel/Qwen2.5-VL-3B-Instruct-Action \
   --datasets.vla_data.data_root_dir /mnt/synology/RobotData/LEROBOT_LIBERO_DATA \
   --datasets.vla_data.data_mix libero_all \
-  --datasets.vla_data.per_device_batch_size 4 \
+  --datasets.vla_data.per_device_batch_size 8 \
   --trainer.vla_data.video_backend torchvision_av \
   --trainer.freeze_modules '' \
   --trainer.max_train_steps 80000 \
   --trainer.save_interval 10000 \
   --trainer.logging_frequency 100 \
   --trainer.eval_interval 100 \
+  --trainer.dtype bf16 \
+  --trainer.is_resume True \
   --run_root_dir ./results/Checkpoints \
-  --run_id 1229_libero4in1_qwen25oft
+  --run_id 1229_libero4in1_qwen25oft_bf16
+  # --is_debug True
 SCRIPT
 
 chmod +x /tmp/train_node.sh

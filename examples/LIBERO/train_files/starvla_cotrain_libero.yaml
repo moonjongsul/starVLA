@@ -4,7 +4,7 @@ seed: 42
 trackers: [jsonl, wandb]
 wandb_entity: your_wandb_entity
 wandb_project: llavavla
-is_debug: false
+is_debug: true
 
 
 framework:
@@ -75,8 +75,8 @@ datasets:
 
 
 trainer:
-  epochs: 100
-  max_train_steps: 100000
+  epochs: 20
+  max_train_steps: 500000
   num_warmup_steps: 5000
   save_interval: 5000
   eval_interval: 100
