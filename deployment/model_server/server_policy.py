@@ -65,7 +65,7 @@ if __name__ == "__main__":
     parser = build_argparser()
     args = parser.parse_args()
     print(args)
-    if os.getenv("DEBUG", False):
+    if os.getenv("DEBUG", "false").lower() == "true":
         print("🔍 DEBUGPY is enabled")
         start_debugpy_once()
     main(args)
