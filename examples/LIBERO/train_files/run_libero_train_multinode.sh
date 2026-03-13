@@ -1,7 +1,29 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-cd /workspace/starVLA
+################################################################################
+# Host config (노드1 호스트에서 설정)
+################################################################################
+export MASTER_ADDR=${SPARK_NODE_1}
+export MASTER_PORT=29500
+export NNODES=2
+
+################################################################################
+# 노드1 호스트에서 실행: rsync
+################################################################################
+echo "[SYNC] Syncing 'workspace' folder to node2..."
+rsync -avz --delete \
+  --exclude 'results/' \
+  ~/workspace/ \
+  ${USER}@${SPARK_NODE_2}:~/workspace/
+echo "[SYNC] Done."
+
+################################################################################
+# 컨테이너 내부에서 실행할 스크립트 생성
+################################################################################
+cat > /tmp/train_container.sh << 'SCRIPT'
+#!/usr/bin/env bash
+set -euo pipefail
 
 ################################################################################
 # User config
@@ -17,7 +39,7 @@ run_id="multinode_libero_qwen25oft"
 
 # training options
 per_device_batch_size=24
-max_train_steps=10000000
+max_train_steps=10001000
 save_interval=10000
 logging_frequency=100
 eval_interval=100
@@ -32,16 +54,20 @@ wandb_entity="jinhuiye"
 : "${NODE_RANK:?Need NODE_RANK}"
 : "${NNODES:?Need NNODES}"
 
-# Optional overrides
 export WANDB_MODE="${WANDB_MODE:-disabled}"
-export NCCL_DEBUG="${NCCL_DEBUG:-INFO}"
+export NCCL_DEBUG="${NCCL_DEBUG:-WARN}"
 export TORCH_NCCL_ASYNC_ERROR_HANDLING="${TORCH_NCCL_ASYNC_ERROR_HANDLING:-1}"
 export OMP_NUM_THREADS="${OMP_NUM_THREADS:-8}"
 export CUDA_DEVICE_MAX_CONNECTIONS="${CUDA_DEVICE_MAX_CONNECTIONS:-1}"
 export TOKENIZERS_PARALLELISM="${TOKENIZERS_PARALLELISM:-false}"
 export PYTHONUNBUFFERED=1
+export TORCH_CUDA_ARCH_LIST=12.1+PTX
+export TORCHINDUCTOR_DISABLE=1
+export NCCL_SOCKET_IFNAME=enp1s0f1np1
+export NCCL_IB_DISABLE=0
+export NCCL_NET_GDR_LEVEL=5
+export NCCL_TIMEOUT=3600
 
-# Node-local sanity prints
 echo "============================================================"
 echo "[starVLA multinode launch]"
 echo "HOSTNAME              = $(hostname)"
@@ -57,16 +83,11 @@ python -c "import torch; print('torch=', torch.__version__)"
 python -c "import torch; print('cuda_available=', torch.cuda.is_available(), 'device_count=', torch.cuda.device_count())"
 python -c "import torch; print('nccl=', torch.cuda.nccl.version())"
 
+cd /workspace/starVLA
+
 output_dir="${run_root_dir}/${run_id}"
 mkdir -p "${output_dir}"
 cp "$0" "${output_dir}/"
-
-# NOTE:
-# - You have 2 nodes x 1 GPU each
-# - total processes = 2
-# - machine rank = NODE_RANK (0 on node1, 1 on node2)
-#
-# We pass --num_machines=2 and --num_processes=2 to match the current repo style.
 
 accelerate launch \
   --config_file starVLA/config/deepseeds/deepspeed_zero2.yaml \
@@ -92,3 +113,32 @@ accelerate launch \
   --run_id "${run_id}" \
   --wandb_project "${wandb_project}" \
   --wandb_entity "${wandb_entity}"
+SCRIPT
+
+chmod +x /tmp/train_container.sh
+scp /tmp/train_container.sh ${USER}@${SPARK_NODE_2}:/tmp/train_container.sh
+
+################################################################################
+# 노드2 컨테이너에서 실행 (백그라운드)
+################################################################################
+echo "[INFO] Starting worker on node2 (starVLA-node2)..."
+# 노드2 (백그라운드, 출력 버림)
+ssh ${USER}@${SPARK_NODE_2} \
+  "docker exec \
+     -e NODE_RANK=1 \
+     -e MASTER_ADDR=${MASTER_ADDR} \
+     -e MASTER_PORT=${MASTER_PORT} \
+     -e NNODES=${NNODES} \
+   starVLA-node2 bash /tmp/train_container.sh" > /dev/null 2>&1 &
+SSH_PID=$!
+
+# 노드1 (tty 연결로 tqdm 정상 출력)
+docker exec -it \
+  -e NODE_RANK=0 \
+  -e MASTER_ADDR=${MASTER_ADDR} \
+  -e MASTER_PORT=${MASTER_PORT} \
+  -e NNODES=${NNODES} \
+  starVLA-node1 bash /tmp/train_container.sh
+
+wait $SSH_PID
+echo "[INFO] Training finished."
