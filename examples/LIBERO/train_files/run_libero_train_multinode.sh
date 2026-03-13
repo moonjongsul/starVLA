@@ -16,7 +16,7 @@ run_root_dir="./results/Checkpoints"
 run_id="multinode_libero_qwen25oft"
 
 # training options
-per_device_batch_size=20
+per_device_batch_size=24
 max_train_steps=10000000
 save_interval=10000
 logging_frequency=100
