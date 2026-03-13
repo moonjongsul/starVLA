@@ -21,24 +21,6 @@ mkdir -p ${output_dir}
 cp $0 ${output_dir}/
 
 
-# python starVLA/training/train_starvla.py \
-#   --config_yaml ${config_yaml} \
-#   --framework.name ${Framework_name} \
-#   --framework.qwenvl.base_vlm ${base_vlm} \
-#   --datasets.vla_data.data_root_dir ${libero_data_root} \
-#   --datasets.vla_data.data_mix ${data_mix} \
-#   --datasets.vla_data.per_device_batch_size 4 \
-#   --trainer.vla_data.video_backend torchvision_av \
-#   --trainer.freeze_modules ${freeze_module_list} \
-#   --trainer.max_train_steps 80000 \
-#   --trainer.save_interval 10000 \
-#   --trainer.logging_frequency 100 \
-#   --trainer.eval_interval 100 \
-#   --run_root_dir ${run_root_dir} \
-#   --run_id ${run_id} \
-#   --wandb_project starVLA_Libero \
-#   --wandb_entity jinhuiye
-
 accelerate launch \
   --config_file starVLA/config/deepseeds/deepspeed_zero2.yaml \
   --num_processes 1 \
@@ -59,3 +41,23 @@ accelerate launch \
   --run_id ${run_id} \
   --wandb_project starVLA_Libero \
   --wandb_entity jinhuiye \
+
+
+
+# python starVLA/training/train_starvla.py \
+#   --config_yaml ${config_yaml} \
+#   --framework.name ${Framework_name} \
+#   --framework.qwenvl.base_vlm ${base_vlm} \
+#   --datasets.vla_data.data_root_dir ${libero_data_root} \
+#   --datasets.vla_data.data_mix ${data_mix} \
+#   --datasets.vla_data.per_device_batch_size 4 \
+#   --trainer.vla_data.video_backend torchvision_av \
+#   --trainer.freeze_modules ${freeze_module_list} \
+#   --trainer.max_train_steps 80000 \
+#   --trainer.save_interval 10000 \
+#   --trainer.logging_frequency 100 \
+#   --trainer.eval_interval 100 \
+#   --run_root_dir ${run_root_dir} \
+#   --run_id ${run_id} \
+#   --wandb_project starVLA_Libero \
+#   --wandb_entity jinhuiye
